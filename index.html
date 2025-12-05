@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>gnf.foo.ng — Today's Fun Fact</title>
+  <style>
+    /* >gnf.foo.ng minimalist styling */
+    :root{--max-width:60ch;--muted:#666;}
+    html,body{height:100%}
+    body{
+      font-family: "Times New Roman", Georgia, serif;
+      margin:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: #fff;
+      color:#000;
+    }
+    main{
+      max-width:var(--max-width);
+      padding:4rem 2rem;
+      text-align:left;
+      line-height:1.45;
+    }
+    h1{font-size:1.25rem;margin:0 0 .5rem;font-weight:400;}
+    p.lead{font-size:1.1rem;margin:0 0 1.5rem;color:var(--muted)}
+    figure{margin:0 0 1.5rem;padding:1.25rem;border-radius:6px;background:#fbfbfb;border:1px solid #eee}
+    blockquote{margin:0;font-style:italic}
+    footer{font-size:.85rem;color:var(--muted);margin-top:1rem}
+    .meta{display:flex;gap:1rem;align-items:center;margin-top:.75rem}
+    button{
+      appearance:none;
+      border:1px solid #ddd;
+      background:#fff;
+      padding:.45rem .7rem;
+      border-radius:6px;
+      cursor:pointer;
+      font-family:inherit;
+      font-size:.95rem;
+    }
+    button:active{transform:translateY(1px)}
+    .small{font-size:.9rem;color:var(--muted)}
+    @media (max-width:520px){
+      main{padding:2rem 1rem}
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>>gnf.foo.ng</h1>
+    <p class="lead">A tiny page that gives you a new (deterministic) random fun fact each day.</p>
+
+    <figure id="factCard" aria-live="polite">
+      <blockquote id="fact">Loading today's fun fact…</blockquote>
+    </figure>
+
+    <div class="meta">
+      <div class="small" id="dateText"></div>
+      <div style="margin-left:auto">
+        <button id="shareBtn" title="Copy fact or use Web Share">Share</button>
+        <button id="otherBtn" title="Show a different random fact for today">Other (same day)</button>
+      </div>
+    </div>
+
+    <footer>
+      Facts are chosen from a small built-in list. To change the list, edit the facts array in the HTML file.
+    </footer>
+  </main>
+
+  <script>
+    // --- CONFIG: edit this array to change facts ---
+    const facts = [
+      "Honey never spoils — edible honey was found in ancient Egyptian tombs.",
+      "Octopus has three hearts and blue blood.",
+      "Bananas are berries, but strawberries aren't.",
+      "A day on Venus is longer than its year.",
+      "Wombat poop is cube-shaped.",
+      "There are more possible chess games than there are atoms in the observable universe.",
+      "Sea otters hold hands when they sleep so they don't drift away.",
+      "A group of flamingos is called a 'flamboyance'.",
+      "Cleopatra lived closer in time to the moon landing than to the building of the Great Pyramid.",
+      "You can't hum while holding your nose closed.",
+      "The inventor of the Pringles can is buried in one.",
+      "The Eiffel Tower can be 15 cm taller during the summer due to thermal expansion.",
+      "Sharks existed before trees.",
+      "Some turtles can breathe through their butts (cloacal respiration).",
+      "There are more stars in the universe than grains of sand on all Earth's beaches."
+    ];
+
+    // --- Deterministic per-day selection using days-since-epoch seed ---
+    function daysSinceEpoch(date = new Date()) {
+      return Math.floor(date.setHours(0,0,0,0) / 86400000);
+    }
+
+    // simple LCG to generate a pseudo-random number from a seed (deterministic)
+    function seededRandom(seed) {
+      // values chosen to produce a reasonable distribution
+      seed = (seed * 9301 + 49297) % 233280;
+      return seed / 233280;
+    }
+
+    function pickFactForDay(date = new Date()) {
+      const days = daysSinceEpoch(new Date(date)); // integer
+      // use LCG chain to mix the day number
+      let s = days;
+      // iterate a few times to mix well
+      for (let i=0;i<3;i++){
+        s = Math.floor(seedMix(s));
+      }
+      const r = seededRandom(s);
+      const idx = Math.floor(r * facts.length) % facts.length;
+      return {fact: facts[idx], index: idx};
+    }
+
+    function seedMix(x){
+      return (x * 1664525 + 1013904223) % 4294967296;
+    }
+
+    // show fact
+    const factEl = document.getElementById('fact');
+    const dateText = document.getElementById('dateText');
+    const factCard = document.getElementById('factCard');
+
+    function renderFact(obj) {
+      factEl.textContent = obj.fact;
+      const now = new Date();
+      dateText.textContent = `Date: ${now.toISOString().slice(0,10)} · Fact #${obj.index + 1}/${facts.length}`;
+    }
+
+    // initial render (today)
+    renderFact(pickFactForDay(new Date()));
+
+    // "Other (same day)" gets a different deterministic choice by advancing a small counter
+    let otherCounter = 1;
+    document.getElementById('otherBtn').addEventListener('click', () => {
+      const days = daysSinceEpoch(new Date());
+      // mix with counter to get other deterministic picks for the same day
+      const mixSeed = Number(days) + (otherCounter++);
+      let s = mixSeed;
+      for (let i=0;i<3;i++) s = Math.floor(seedMix(s));
+      const r = seededRandom(s);
+      const idx = Math.floor(r * facts.length) % facts.length;
+      renderFact({fact: facts[idx], index: idx});
+    });
+
+    // Share/copy button: use Web Share if available, otherwise copy to clipboard
+    document.getElementById('shareBtn').addEventListener('click', async () => {
+      const text = factEl.textContent + " — " + new Date().toISOString().slice(0,10);
+      if (navigator.share) {
+        try {
+          await navigator.share({title: "Today's Fun Fact", text});
+        } catch (e) {
+          // user cancelled or share failed — fallback to copy
+          await copyToClipboard(text);
+          alert('Fact copied to clipboard.');
+        }
+      } else {
+        await copyToClipboard(text);
+        alert('Fact copied to clipboard.');
+      }
+    });
+
+    async function copyToClipboard(txt) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(txt);
+      } else {
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch(e){}
+        document.body.removeChild(ta);
+      }
+    }
+
+    // Optional: keyboard shortcut R to reload today's fact to original
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'r' || e.key === 'R') {
+        renderFact(pickFactForDay(new Date()));
+      }
+    });
+  </script>
+</body>
+</html>
